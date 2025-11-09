@@ -4,7 +4,16 @@ from dataclasses import dataclass
 
 from src.document_parsing.data_extraction import MinerU_Parser
 from src.document_parsing.sample_data import combined_knowledge_units, current_multimodel_unit
+from src.content_processor.prompt import TABLE_CONTENT_WITH_CONTEXT_PROMPT
 
+from perplexity import Perplexity
+import perplexity
+import os
+import base64
+from dotenv import load_dotenv
+load_dotenv()
+
+perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
 
 
 """
@@ -75,15 +84,15 @@ def units_splitter(knowledge_units_list:list):
                         ####  2-  Context Extractor  ####
 
 
-class context_extractor():
+class Context_Extractor():
     """
     It contains two components required for driving the context around the multi-model context. 
     1) Context Extractor 
-    2) Image Prcoessor
+    2) multi-model Prcoessor
 
     1) Context extractor takes the current chunk (multi-model chunk), fetches the text from the surrounding of the current chunk.
 
-    2) Image Processor: It takes the image of multi-model content, and text fetched by the context extractor & get the 
+    2) multi-model Processor: It takes the image of multi-model content, and text fetched by the context extractor & get the 
         description of the multi-model content & details of entity name & other details required to store it in Knowledge Graph.
 
     """
@@ -162,7 +171,102 @@ class context_extractor():
             if "table_caption" in lcc:
                 context_chunks_text.append(lcc.get("table_caption",""))
 
-        return print(content_of_current_unit)
+        return content_of_current_unit,context_chunks_text
+
+
+class ContentProcessor():
+      
+      """
+        It is the processor that takes the contextual text from the surroudning chunks & address of the image of the multi-model chunk,
+        calls the LLM to give the summary of the content and also entity description which will include following things:
+        1- Name of entity
+        2- Entity type
+        3- Description for Graph DB 
+      """
+
+      def __init__(self,context_chunks_text,content_of_current_chunk):
+          
+          self.context_chunks_text = context_chunks_text
+          self.content_of_current_chunk = content_of_current_chunk
+          
+        
+      def Information_generation_processor(self):
+          
+        """
+        **Args:**
+        context_chunks_text (list[str]): It is the text of the surrouding context, that gives the context of the document narrative around
+                                         the multi-model content.
+        content_of_current_chunk (str): It is the local address of the image of multi-model content.
+        
+        **Returns:**
+        Content_description (list[str]): It is the detailed description of the multi-model content
+        Entity_summary (dict): It contains the information which we need to include table-description as node in knowledge Graph. It contains
+                                entity name, entity type, entity description for knowledge Graph.
+        
+        """
+        
+
+        # Get the input variables
+        address_of_content = self.content_of_current_chunk
+        contextual_text = self.context_chunks_text
+
+        # lets convert the address in base64 mode
+        try:
+            with open(address_of_content,"rb") as file_path:
+                base_format_address = base64.b64encode(file_path.read()).decode("utf-8")
+                file_uri = f"data:image/jpg;base64,{base_format_address}"
+        except FileNotFoundError:
+            print("Error: Image file not found.")
+            exit()
+
+        """
+        1- Ensure limit runs with maximum retries
+        2- Handle errors
+        3- Control creativity
+        """
+        
+        # Get the prompt for the LLM
+        prompt = TABLE_CONTENT_WITH_CONTEXT_PROMPT.format(
+            address_of_content = base_format_address,
+            contextual_text = contextual_text
+        )
+
+        # Initialize the client for perplexity
+        client = Perplexity(api_key=perplexity_api_key, 
+                            max_retries=1, 
+                            )
+        try:
+            # Generate perplexity response
+            llm_content_description = client.chat.completions.create(
+                messages= 
+                        [
+                            {
+                            "role": "user", 
+                            "content" :  [ 
+                                            {
+                                            "type" : "text",
+                                            "text": prompt
+                                            },
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {
+                                                    "url": file_uri
+                                                }
+                                            }  
+                                        ]
+                            }
+                        ],
+                model= "sonar"
+
+            )
+
+            return llm_content_description.choices[0].message.content
+        except perplexity.BadRequestError as e:
+            print(f"Invalid request parameters: {e}")
+        except perplexity.RateLimitError as e:
+            print("Rate limit exceeded, please retry later")
+        except perplexity.APIStatusError as e:
+            print(f"API error: {e.status_code}")
 
 
 
@@ -171,6 +275,13 @@ if __name__ == "__main__":
 
     multi_model_knowledge_units, textual_knowledge_units = units_splitter(knowledge_units_list=combined_knowledge_units)
 
-    extractor = context_extractor(all_knowledge_units=combined_knowledge_units)
-    extractor.multi_model_extractor(current_multi_model_unit=current_multimodel_unit)
+    extractor = Context_Extractor(all_knowledge_units=combined_knowledge_units)
+    address_of_table, context_chunks_text = extractor.multi_model_extractor(current_multi_model_unit=current_multimodel_unit)
 
+    print(address_of_table)
+    print(context_chunks_text)
+    
+    run_processor = ContentProcessor(context_chunks_text=context_chunks_text,
+                                    content_of_current_chunk = address_of_table)
+    llm_response = run_processor.Information_generation_processor()
+    print(llm_response)
