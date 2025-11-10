@@ -15,18 +15,27 @@ However, in order to generate the detailed description of the Table you also nee
 Table data on your own in context of the context text provided to you.
 
 Here are two things that you need to generate in the output:
-1) Content_description (str): It is the description of the datapoints of the Table. It includes the interpretation
-of the Table content in the light of the context text. 
-For example: 
-Content_description = "Table is representing the results of the final exams of students and it seggregates 
-the number of students into different percentage categories. In the first category, it shows that students
-who got Grade A are 10, students who got Grade B are 20 "
+1) content_description: It is the description of the datapoints of the Table. It includes the interpretation
+of the Table content in the light of the context text. Make sure you follow the following guidelines for compiling the data for the 
+content_description. 
+Guidelines for content_description:
+1- Start with brief introduction about the content of the table. Only overview of what information going to tell us and what entities it includes.
+2- You only need to explain the stats that are given in the table, you need to interpret those stats. 
+3- You do not need to analyze or give your opinion on those stats.
+4- Do not give the analysis - only give the interpretation. 
+5- Donot give the conclusion or summary at the end. 
+6- Extract this information and format it as specified in the schema.
 
-Entity_summary (dict[str]): It is the details of the entity (Table) that will be used to create a node for it 
-in the knowledge Graph in the Graph database. 
-For example:
-Entity_summary (dict[str]): {{entity_name:"Grade_results_table", entity_type: "table", entity_description: "summary
-for the node description in Graph DB"}}
+2) entity_summary: It is the summary of the entity for which you are currently generating the description. Make
+sure you following the following guidelines for compiling the information for the entity summary. 
+Guidelines for entity_summary:
+1- It should include the entity name. Choose the name based on the your understanding of what table is constructed for.
+2- It should include the entity type. Entity type is obviously "table"
+3- It should include the names of the entities that are disucssed in the table. 
+3- You should generate the brief description of the entity that will be required to store as a node description in the knowledge graph. 
+4- In the entity description, you must include the brief intro about the entity and relationship between the entities.
+5- Extract this information and format it as specified in the schema. 
+
 
  {contextual_text}
  {address_of_content}

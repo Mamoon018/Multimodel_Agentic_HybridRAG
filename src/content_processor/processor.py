@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from src.document_parsing.data_extraction import MinerU_Parser
 from src.document_parsing.sample_data import combined_knowledge_units, current_multimodel_unit
 from src.content_processor.prompt import TABLE_CONTENT_WITH_CONTEXT_PROMPT
+from src.content_processor.schemas import table_description_schema
 
 from perplexity import Perplexity
 import perplexity
@@ -184,10 +185,11 @@ class ContentProcessor():
         3- Description for Graph DB 
       """
 
-      def __init__(self,context_chunks_text,content_of_current_chunk):
+      def __init__(self,context_chunks_text,content_of_current_chunk,table_content_schema):
           
           self.context_chunks_text = context_chunks_text
           self.content_of_current_chunk = content_of_current_chunk
+          self.table_content_schema = table_content_schema
           
         
       def Information_generation_processor(self):
@@ -209,6 +211,7 @@ class ContentProcessor():
         # Get the input variables
         address_of_content = self.content_of_current_chunk
         contextual_text = self.context_chunks_text
+        table_output_schema = self.table_content_schema
 
         # lets convert the address in base64 mode
         try:
@@ -256,11 +259,23 @@ class ContentProcessor():
                                         ]
                             }
                         ],
-                model= "sonar"
+                model= "sonar",
+                response_format= {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "schema": table_output_schema.model_json_schema()
+                    }
+
+                }
 
             )
 
-            return llm_content_description.choices[0].message.content
+            llm_structured_output = table_output_schema.model_validate_json(llm_content_description.choices[0].message.content)
+            llm_structured_output = llm_structured_output.model_dump()
+            table_description = llm_structured_output.get("content_description","")
+            entity_summary = llm_structured_output.get("entity_summary","")
+
+            return table_description, entity_summary, llm_structured_output
         except perplexity.BadRequestError as e:
             print(f"Invalid request parameters: {e}")
         except perplexity.RateLimitError as e:
@@ -277,11 +292,9 @@ if __name__ == "__main__":
 
     extractor = Context_Extractor(all_knowledge_units=combined_knowledge_units)
     address_of_table, context_chunks_text = extractor.multi_model_extractor(current_multi_model_unit=current_multimodel_unit)
-
-    print(address_of_table)
-    print(context_chunks_text)
     
     run_processor = ContentProcessor(context_chunks_text=context_chunks_text,
-                                    content_of_current_chunk = address_of_table)
+                                    content_of_current_chunk = address_of_table,
+                                    table_content_schema= table_description_schema)
     llm_response = run_processor.Information_generation_processor()
     print(llm_response)
