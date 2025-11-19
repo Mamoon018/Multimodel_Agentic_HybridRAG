@@ -6,11 +6,10 @@ from src.document_parsing.data_extraction import MinerU_Parser
 from src.document_parsing.sample_data import combined_knowledge_units, current_multimodel_unit
 from src.content_processor.prompt import TABLE_CONTENT_WITH_CONTEXT_PROMPT
 from src.content_processor.schemas import table_description_schema
-from utils import doc_id
-from utils import units_splitter
-from utils import document_title
+from utils import doc_id, units_splitter, document_title, Milvus_client
 
 from perplexity import Perplexity
+from pymilvus import MilvusClient, DataType
 import perplexity
 import os
 import base64
@@ -292,11 +291,75 @@ class processor_storage():
         current_item["chunk_id"] = chunk_id
         current_item["document_title"] = doc_title
 
-        # Build a Chunk's payload for storing in the vector database
+        self.current_item = current_item
+        return self.current_item
+    
+    def textual_chunks_vector_payload(self):
+        """
+        It takes the data from the current item and prepares the payload for textual chunks by including the
+        vector representation of data in it.
+
+        **Args:**
+        current_item (dict): It contains the datapoints that are useful for building the payload.
+
+        **Returns:**
+        chunk_payload (dict): It is the payload of the chunk that includes vector representation and 
+                              will be pushed to the vector database.
+
+        """
+
+        # Get the current item
+        current_item = self.current_item
+
+        # Initialize milvus client
+        Client = Milvus_client()
+        # Initialize the schema creation 
+        text_vectors_schema = Client.create_schema(
+                                                    auto_id = False,
+                                                    )
+        
+        # Fields of schema
+        text_vectors_schema.add_field(
+            field_name= "doc_id",
+            datatype= DataType.VARCHAR,
+            is_primary = True,
+            max_length = 50
+        )
+        text_vectors_schema.add_field(
+            field_name= "chunk_id",
+            datatype=DataType.VARCHAR,
+            max_length = 50
+        )
+        text_vectors_schema.add_field(
+            field_name= "document_title",
+            datatype= DataType.VARCHAR,
+            max_length = 500
+        )
+        text_vectors_schema.add_field(
+            field_name= "page_no",
+            datatype= DataType.INT64
+        )
+        text_vectors_schema.add_field(
+            field_name= "index_on_page",
+            datatype= DataType.INT64
+        )
+        text_vectors_schema.add_field(
+            field_name= "Vectors",
+            datatype= DataType.FLOAT_VECTOR, dim = 768
+        )
+
+        # Indexing for vectors field is must - in order to perform vector search. Currently, we will stick with the
+        vector_index = Client.prepare_index_params()
+        vector_index.add_index(
+            field_name="Vectors",
+            index_name= "dense_vectors_index"
+            index_type="AUTOINDEX",
+            metric_type = "COSINE"
+        )
 
 
 
-        return current_item
+        return Client
 
 
 
@@ -338,7 +401,8 @@ if __name__ == "__main__":
     for current_item in [textual_knowledge_units[0]]:
         current_item_number += 1
         new = db_storage.textual_chunk_payload_prep(current_item, current_item_number)
-    print(new)
+        new_1 = db_storage.textual_chunks_vector_payload()
+    print(new_1)
 
 
 

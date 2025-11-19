@@ -1,6 +1,12 @@
 
 import uuid
 from src.document_parsing.sample_data import combined_knowledge_units
+from pymilvus import MilvusClient
+import os
+
+
+milvus_api_key = os.getenv("MILVUS_API_KEY")
+
 
 
 
@@ -87,4 +93,23 @@ def document_title():
 
 
     return doc_title
+
+
+
+## Initialize the Milvus Client
+
+def Milvus_client():
+    """
+    It initializes the connection with the Milvus server using the API
+    """
+    Client = MilvusClient(
+                            uri= "https://in03-83d8e6e72c3248f.serverless.aws-eu-central-1.cloud.zilliz.com",
+                            token= milvus_api_key
+                        )
+
+    return Client
+
+if __name__ == "__main__":
+
+    Milvus_client()
 
