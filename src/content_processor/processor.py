@@ -9,7 +9,7 @@ from src.content_processor.schemas import table_description_schema
 from utils import doc_id, units_splitter, document_title, Milvus_client
 
 from perplexity import Perplexity
-from pymilvus import MilvusClient, DataType
+from pymilvus import DataType, Function, FunctionType
 import perplexity
 import os
 import base64
@@ -127,7 +127,7 @@ class ContentProcessor():
       
       """
         It is the processor that takes the contextual text from the surroudning chunks & address of the image of the multi-model chunk,
-        calls the LLM to give the summary of the content and also entity description which will include following things:
+        calls the LLM to give the "summary of the content" and also "entity description" which will include following things:
         1- Name of entity
         2- Entity type
         3- Description for Graph DB 
@@ -291,90 +291,202 @@ class processor_storage():
         current_item["chunk_id"] = chunk_id
         current_item["document_title"] = doc_title
 
-        self.current_item = current_item
-        return self.current_item
+        # Get the JSON of Metadata
+        metadata = {
+            "page_no.": current_item["page_no."],
+            "index_on_page": current_item["index_on_page"],
+            "content_type": current_item["content_type"],
+            "document_title": current_item["document_title"]
+        }
+
+        # Using metadata and current item fields, we need to create insertion payload that aligns with schema
+        self.chunk_insertion_data = {
+            "doc_id": current_item["doc_id"],
+            "chunk_id": current_item["chunk_id"],
+            "raw_content": current_item["raw_content"],
+            "meta_data": metadata
+        }
+
+        return self.chunk_insertion_data
     
-    def textual_chunks_vector_payload(self):
+    def generate_embeddings_function(self,chunks_text_content:list):
+
         """
-        It takes the data from the current item and prepares the payload for textual chunks by including the
-        vector representation of data in it.
+        It takes the list of text chunks of the textual_items, and passes it to the openai embedding models that generates the
+        vector embeddings of the chunks in a single api call, and then attach the generated vectors back to respective items of
+        textual_knowledge_units.
 
         **Args:**
-        current_item (dict): It contains the datapoints that are useful for building the payload.
+                chunks_text_content (list): It is the list of the chunks text content that needs to be vectorized using embedding models.
 
         **Returns:**
-        chunk_payload (dict): It is the payload of the chunk that includes vector representation and 
-                              will be pushed to the vector database.
-
+                
         """
 
-        # Get the current item
-        current_item = self.current_item
+        text_embedding_function = Function(
+
+            name= "openai_embedding",
+            function_type= FunctionType.TEXTEMBEDDING,
+            input_field_names= ["raw_content"],
+            output_field_names= ["Vectors"],
+
+            params= {
+                "provider": "openai",
+                "model_name": "text-embedding-3-small"
+            }
+
+        )
+
+        return text_embedding_function
+
+
+    def textual_VDB_collection(self):
+        """
+        It initializes the milvus client and defines the schema of the collection and load the collection using that 
+        schema, also defines the indexing strategy for chunks vectors.
+
+        **Returns:** (str): It returns the confirmation abuot the collection loading 
+
+        """
 
         # Initialize milvus client
         Client = Milvus_client()
         # Initialize the schema creation 
         text_vectors_schema = Client.create_schema(
                                                     auto_id = False,
-                                                    )
-        
+                                                    )                            
+
+        # Add embedding function to the schema
+        text_vectors_schema.add_function(self.text_embedding_function)
+
         # Fields of schema
         text_vectors_schema.add_field(
             field_name= "doc_id",
+            datatype=DataType.VARCHAR,
+            max_length = 50
+        )
+        text_vectors_schema.add_field(
+            field_name= "chunk_id",
             datatype= DataType.VARCHAR,
             is_primary = True,
             max_length = 50
         )
         text_vectors_schema.add_field(
-            field_name= "chunk_id",
-            datatype=DataType.VARCHAR,
-            max_length = 50
-        )
-        text_vectors_schema.add_field(
-            field_name= "document_title",
+            field_name= "raw_content",
             datatype= DataType.VARCHAR,
-            max_length = 500
+            max_length = 50000
         )
         text_vectors_schema.add_field(
-            field_name= "page_no",
-            datatype= DataType.INT64
-        )
-        text_vectors_schema.add_field(
-            field_name= "index_on_page",
-            datatype= DataType.INT64
+            field_name= "metadata",
+            datatype= DataType.JSON
         )
         text_vectors_schema.add_field(
             field_name= "Vectors",
-            datatype= DataType.FLOAT_VECTOR, dim = 768
+            datatype= DataType.FLOAT_VECTOR, dim = 1536
         )
+        
+        """
+        For prioritising the high recall & high QPS, we will stick with HNSW approach which uses graph to map the 
+        data, params (M, ef) can be tuned based on the outcome quality.
+        """
+
 
         # Indexing for vectors field is must - in order to perform vector search. Currently, we will stick with the
-        vector_index = Client.prepare_index_params()
-        vector_index.add_index(
+        vector_index_params = Client.prepare_index_params()
+        vector_index_params.add_index(
             field_name="Vectors",
-            index_name= "dense_vectors_index"
-            index_type="AUTOINDEX",
-            metric_type = "COSINE"
+            index_name= "dense_vectors_index",
+            # As TopK in our case gonna be low, we will choose Graph based approach (HNSW)
+            index_type="HNSW",
+            metric_type = "COSINE",
+            params = {
+                "M": 20,
+                "efConstruction": 35
+            }
         )
 
+        collection_signal = None
+        list_of_collections = Client.list_collections()
+        if "Textual_collection_1" not in list_of_collections:
 
+                # Let's create the collection which we will use to store the data
+                Client.create_collection(
+                                            collection_name="Textual_collection_1",
+                                            schema= text_vectors_schema,
+                                            index_params= vector_index_params)
+                collection_signal = "Collection created"
 
-        return Client
+        else:
+                    # confirmation of collection creation
+                collection_signal = Client.load_collection(
+                        collection_name="Textual_collection_1"
+                    )
+                collection_signal = "Collection loaded!"
+                
+        list_of_collections = Client.list_collections()
 
+        return collection_signal, list_of_collections
+    
 
+    def textual_VDB_collection_input(self):
 
+        """
+        It takes the current item as an input and prepares the object that fits with the schema of the collection
+        and that will be used for the insertion to the collection.
 
+        **Args:**
+        current_item (dict): It contains the datapoints of the chunk that will be stored in the milvus VDB,
 
+        **Returns:** 
+        chunk_for_VDB (dict): It contains the datapoints of the chunk with the fields according to the order of schema.
         
+        """
+
+        # Prepare the object to pass to the collection
+
+        pass
+
+    def __run__(self):
+
+        """
+        It is the main function that runs the class.
+        """
+        # Get the units separated
+        multi_model_knowledge_units, textual_knowledge_units = units_splitter(knowledge_units_list=combined_knowledge_units)
+
+        ## Context Extractor
+        #   extractor = Context_Extractor(all_knowledge_units=combined_knowledge_units)
+        #   address_of_table, context_chunks_text = extractor.multi_model_extractor(current_multi_model_unit=current_multimodel_unit)
+    
+        #   run_processor = ContentProcessor(context_chunks_text=context_chunks_text,
+        #                                   content_of_current_chunk = address_of_table,
+        #                                   table_content_schema= table_description_schema)
+        #   llm_response = run_processor.Information_generation_processor()
 
 
 
 
+        # List of chunk_payload that needs to be pushed to Milvus VDB
+        chunks_payload_list = []
+        current_item_number = 0
+        for current_item in textual_knowledge_units:
+            current_item_number += 1
+            new = self.textual_chunk_payload_prep(current_item, current_item_number)
+            chunks_payload_list.append(new)
 
+        # Get the list of chunks text for vector embedding generation
+        chunks_text_list = []
+        for chunk_payload in chunks_payload_list:
+            chunk_payload_text = chunk_payload.get("raw_content","")
+            chunks_text_list.append(chunk_payload_text)
 
+        # Generate vector embeddings
+        self.generate_embeddings_function()
 
+        # Lets create collection for VDB
+        new_1 = self.textual_VDB_collection()
 
-
+        print(chunks_text_list)        
 
 
 
@@ -384,27 +496,14 @@ class processor_storage():
 
 if __name__ == "__main__":
 
-    multi_model_knowledge_units, textual_knowledge_units = units_splitter(knowledge_units_list=combined_knowledge_units)
-
-    #extractor = Context_Extractor(all_knowledge_units=combined_knowledge_units)
-    #address_of_table, context_chunks_text = extractor.multi_model_extractor(current_multi_model_unit=current_multimodel_unit)
-    
-    #run_processor = ContentProcessor(context_chunks_text=context_chunks_text,
-    #                                content_of_current_chunk = address_of_table,
-    #                                table_content_schema= table_description_schema)
-    #llm_response = run_processor.Information_generation_processor()
-    
     db_storage = processor_storage()
 
+    results = db_storage.__run__()
 
-    current_item_number = 0
-    for current_item in [textual_knowledge_units[0]]:
-        current_item_number += 1
-        new = db_storage.textual_chunk_payload_prep(current_item, current_item_number)
-        new_1 = db_storage.textual_chunks_vector_payload()
-    print(new_1)
+    print(results)
+    
 
-
+    
 
 
 

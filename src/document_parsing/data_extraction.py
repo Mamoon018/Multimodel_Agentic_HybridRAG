@@ -4,11 +4,12 @@
 import subprocess
 from subprocess import CalledProcessError, TimeoutExpired
 from pathlib import Path
-import time
+from utils import units_splitter
+from src.document_parsing.sample_data import combined_knowledge_units
 import json
 
 
-## Parsing Module Workflow
+## Data Ingestion & Parsing Workflow
 """
 
 Class MinerU_Parser:
@@ -32,7 +33,41 @@ class MinerU_Parser():
     def __init__(self,data_file_path):
 
         self.data_file_path = data_file_path
-    
+        
+
+        # run_minerU
+        self.MinerU_code = None
+        self.MinerU_output = None
+        # read minerU output
+        self.content_of_json = None
+        # format minerU output
+        self.minerU_content_list = None
+        
+        
+        # Lets run the module with the main function
+
+    def __run_parser__(self):
+
+        """
+        This function takes the file from the user in order to parse it,
+        and also gives us its knowledge units. 
+        
+        """
+        minerU_testing = MinerU_Parser(data_file_path=self.data_file_path)
+
+        check_installations = minerU_testing.check_minerU_installation()
+        if check_installations:
+            print("minerU is installed, and initiated successfully")
+        
+        if check_installations is False:
+            print("minerU is not installed in your system, please install minerU for document parsing!!")
+
+        minerU_testing.run_minerU()
+        minerU_testing.read_minerU_output()
+        knowledge_units_combined = minerU_testing.format_minerU_output()
+
+        return knowledge_units_combined
+
 
     # lets define the Run_minerU method
     def run_minerU(self):
@@ -48,12 +83,12 @@ class MinerU_Parser():
 
         **Raises:**
         It raises either CalledProcessError or TimeoutExpiredError if external programs gives error or gets hang & block indifinitely. 
-        
+
 
         Optimization:
         1- Limit on extraction pages not working
-        2- Output directory address not followed by the subprocess
-        3- Doubtful even if command line is being completed read by minerU or it is only reading first input of command which is start of minerU & Input file.
+        2- Output directory address not followed by the subprocess (If yes, then input file & output file would have been found here, and there was no need to manually provide address. We would have handled it in automated way.)
+        3- Doubtful even if command line is being completely read by minerU or it is only reading first input of command which is start of minerU & Input file.
 
         """
         try:
@@ -88,9 +123,9 @@ class MinerU_Parser():
     def read_minerU_output(self):
         """
         It takes the address of the folder where minerU has stored its output and will access json file and markdown file
-        from it. It is upto us to use whichever we want to out of these two output files.
+        from it. It is upto us to user whichever format user want to out of these two output files.
 
-        **Args:**
+        **Args:**  (If directory path was being followed then it would have been simply directory path.)
         minerU_output_path (path): It is the path of the folder where minerU has stored its parsed output files.
 
         **Returns:**
@@ -103,16 +138,13 @@ class MinerU_Parser():
 
         """
 
-        # Wait for reading the output until subprocess is completed.
+        # Read .
         mineru_returncode = self.MinerU_code
-        while mineru_returncode != 0:
-            time.sleep(4)
 
         # set directory
         new_cwd_path = Path("C:\\Users\\Hp\\MinerU")
         
         #content_of_cwd = list(new_cwd_path.iterdir())
-        
         folders_cwd = []
         for items in new_cwd_path.iterdir():
             if items.is_dir():
@@ -161,7 +193,7 @@ class MinerU_Parser():
 
 
             PDF_INFO = minerU_raw_output.get("pdf_info","")
-            content_list = []
+            self.minerU_content_list = []
             table_images_folder = []
 
 
@@ -202,7 +234,7 @@ class MinerU_Parser():
                                     list_of_spans_content.append(content_of_span)
                             content_of_spans = " ".join(list_of_spans_content)
                             knowledge_unit = {"page_no.":page_no, "index_on_page":para_index , "raw_content":content_of_spans, "content_type": para_label}
-                            content_list.append(knowledge_unit)
+                            self.minerU_content_list.append(knowledge_unit)
 
                     # Knowledge units of tabular content
                     elif para_label == "table":
@@ -225,10 +257,10 @@ class MinerU_Parser():
                                         if content_type_of_span == "text": 
                                             knowledge_unit = {"page_no.":page_no,  "index_on_page": para_index, "table_caption":table_caption, "content_type": para_label}
 
-                                        content_list.append(knowledge_unit)
+                                        self.minerU_content_list.append(knowledge_unit)
                     
 
-            return content_list
+            return self.minerU_content_list
 
     # Lets create the method to check the installations
     def check_minerU_installation(self):
@@ -262,45 +294,18 @@ class MinerU_Parser():
             return False
 
 
-    # Lets run the module with the main function
-
-    def parse_pdf_document(self):
-
-        """
-        This function takes the file from the user in order to parse it,
-        and also gives us its knowledge units. 
-        
-        """
-        minerU_testing = MinerU_Parser(data_file_path=self.data_file_path)
-
-        check_installations = minerU_testing.check_minerU_installation()
-        if check_installations:
-            print("minerU is installed, and initiated successfully")
-        
-        if check_installations is False:
-            print("minerU is not installed in your system, please install minerU for document parsing!!")
-
-        run_minerU = minerU_testing.run_minerU()
-        read_minerU = minerU_testing.read_minerU_output()
-        knowledge_units_combined = minerU_testing.format_minerU_output()
-
-        return knowledge_units_combined
 
 
 file_path = knowledge_units_list="C:\\Users\Hp\\Documents\\AI Projects docs\\RAG\\RAG_for_Anything.pdf"
 
-def main(data_file):
-
-    # lets initialize the minerU class
-    minerU_testing = MinerU_Parser(data_file_path=data_file)
-
-    
-
-    run_minerU = minerU_testing.run_minerU()
-    read_minerU = minerU_testing.read_minerU_output()
-    knowledge_units_combined = minerU_testing.format_minerU_output()
-
-    return print(knowledge_units_combined)
-
 if __name__ == "__main__":
-    main(data_file=file_path)
+    # lets initialize the minerU class
+    minerU_testing = MinerU_Parser(data_file_path=file_path)
+
+    #parsed_data = minerU_testing.__run_parser__()
+
+    multi_model_units,textual_units = units_splitter(combined_knowledge_units)
+
+
+    print(multi_model_units)
+

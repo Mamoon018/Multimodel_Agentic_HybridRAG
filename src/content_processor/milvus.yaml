@@ -1,0 +1,12 @@
+credential:
+  apikey_dev:            # dev environment
+    apikey: <YOUR_DEV_KEY>
+  apikey_prod:           # production environment
+    apikey: <YOUR_PROD_KEY>    
+
+function:
+  textEmbedding:
+    providers:
+      openai:
+        credential: apikey_dev      # ← choose any label you defined above
+        # url: https://api.openai.com/v1/embeddings   # (optional) custom url
