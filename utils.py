@@ -1,8 +1,10 @@
 
 import uuid
-from src.document_parsing.sample_data import combined_knowledge_units
+from src.document_parsing.sample_data import combined_knowledge_units, sample_textual_vectorized_payload_insertion_list
 from pymilvus import MilvusClient
 from pymilvus import model
+import tiktoken
+import array
 import os
 
 
@@ -110,6 +112,8 @@ def Milvus_client():
 
     return Client
 
+
+
 ## Lets define the openai embedding function
 def openai_embeddings():
     """
@@ -127,7 +131,20 @@ def openai_embeddings():
 
 
 
+## Lets define the function to count the tokens of the text chunk 
+def num_tokens_from_string(string: str, encoding_name: str) -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.get_encoding(encoding_name)
+    num_tokens = len(encoding.encode(string))
+    return num_tokens
+
+
+"""
 if __name__ == "__main__":
 
-    Milvus_client()
+    for vec_payload in sample_textual_vectorized_payload_insertion_list:
+        content_text = vec_payload.get("raw_content","")
 
+        tokens_count = num_tokens_from_string(string=content_text, encoding_name="cl100k_base")
+
+"""
