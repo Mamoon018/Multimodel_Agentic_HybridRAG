@@ -42,7 +42,7 @@ class graphdb_processor():
         #KG_builder_confirmation = self.KG_builder(entity_nodes=entities, relationship_edges=relationships,
         #                                          parent_entity_nodes=Parent_entity_info)
 
-        return relationships
+        return entities
  
 
     def multi_modal_info_extraction_for_KG(self):
@@ -195,9 +195,12 @@ class graphdb_processor():
 
             if entity_match:
                 entity_node = {
-                    "entity_name" : entity_match.group(1),
                     "entity_type" : entity_match.group(2),
-                    "entity_description" : entity_match.group(3)
+                    "properties": {
+                        "entity_name" : entity_match.group(1),
+                        "entity_description" : entity_match.group(3)
+                    }
+                    
                 }
                 entities.append(entity_node) 
 
@@ -208,15 +211,17 @@ class graphdb_processor():
                 relationship_edges = {
                     "source": relationship_match.group(1),
                     "target": relationship_match.group(2),
-                    "description": relationship_match.group(3),
-                    "keywords": relationship_match.group(4),
-                    "category": relationship_match.group(5)
+                    "properties": {
+                        "description": relationship_match.group(3),
+                        "keywords": relationship_match.group(4),
+                        "category": relationship_match.group(5)
+                    }
                 }
                 relationships.append(relationship_edges)
 
         # Adding context keywords to all the entities - in order to ground them in context of their chunk!
         for entity_node in entities:
-            entity_node["chunk_context_keywords"] = chunk_context_keywords           
+                entity_node["properties"]["chunk_context_keywords"] = chunk_context_keywords     
 
 
         return entities, relationships, chunk_context_keywords
@@ -227,12 +232,23 @@ class graphdb_processor():
         build the knowledge graph comprised of nodes and relationships. 
         It also creates the relationship between parent entity (name of content e.g table/image) and child entities which are extracted from the text. 
 
+        TASKS TO BE DONE:
+        1- Bring entity object in the format: Entity ID, Entity Label, Properties (IN PARSING FUNCTION)
+        2- Bring relationship object in the format: Entity ID, Entity Label, Properties (IN PARSING FUNCTION)
+        3- Write a loop that can create cypher query for all entities, and create relationships among them 
+        4- 
+
+
+
         **Args:**
         entity_nodes (list): It is the list of the extracted entities.
         relationship_edges (list): It is the list of the relationships between the extracted entities. 
-        parent_entity_nodes
+        parent_entity_nodes: It is the object that contains the details of parent entity which will be linked with all extracted entities.
 
         """
+
+
+
         pass 
 
 
