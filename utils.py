@@ -2,6 +2,7 @@
 import uuid
 from src.document_parsing.sample_data import combined_knowledge_units, sample_textual_vectorized_payload_insertion_list
 from pymilvus import MilvusClient
+from pymilvus.exceptions import ParamError, ConnectError
 from pymilvus import model
 import tiktoken
 import os
@@ -114,13 +115,17 @@ def Milvus_client():
     """
     It initializes the connection with the Milvus server using the API
     """
-    Client = MilvusClient(
-                            uri= "https://in03-83d8e6e72c3248f.serverless.aws-eu-central-1.cloud.zilliz.com",
-                            token= milvus_api_key
-                        )
+    try:
+        Client = MilvusClient(
+                                uri= "https://in03-83d8e6e72c3248f.serverless.aws-eu-central-1.cloud.zilliz.com",
+                                token= milvus_api_key
+                            )
 
-    return Client
-
+        return Client
+    except ParamError as e:
+        raise(f"Error occurred due to passing incorrect param to milvus client {e}") from e 
+    except ConnectError as e:
+        raise(f"Milvus client could not connect to Milvus server {e}") from e 
 
 
 ## Perplexity Client
@@ -177,14 +182,12 @@ def neo4j_dbconnection():
 
         auth_1 = (neo4j_user_name,neo4j_password)
         graph_db_execs = GraphDatabase.driver(uri=neo4j_uri, auth=auth_1)
+        graph_db_execs.verify_connectivity()
 
         return graph_db_execs
 
     except (ServiceUnavailable, AuthError) as e:
         raise RuntimeError(f"Neo4j connection error ocurred {e}") from e
-
-
-
 
 
 
