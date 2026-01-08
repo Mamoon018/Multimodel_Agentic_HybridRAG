@@ -1,7 +1,7 @@
-                                                                                         # AI Companion for Clinicians 
+# AI Companion for Clinicians 
 AI-Companion that assist clinicians in diagnosis contextualization, critical analysis of heterogeneous docs, and reporting automation to improve efficiency.
 
-                                                                                    ## Key Components of Deep Clinician Assistant ##
+## Key Components of Deep Clinician Assistant ##
 
 # Handles extraction of complex document structures:
 1) It uses the SOTA data extraction tools to extract the data by analyzing the document structure first, and then extract with data while ensuring it remains grounded in its context.
